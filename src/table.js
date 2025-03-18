@@ -1,13 +1,14 @@
-import {create} from './documentUtils';
-import './styles/table.pcss';
+import { create } from "./documentUtils";
+import "./styles/table.pcss";
 
 const CSS = {
-  table: 'tc-table',
-  inputField: 'tc-table__inp',
-  cell: 'tc-table__cell',
-  wrapper: 'tc-table__wrap',
-  area: 'tc-table__area',
-  highlight: 'tc-table__highlight'
+  table: "tc-table",
+  inputField: "tc-table__inp",
+  cell: "tc-table__cell",
+  wrapper: "tc-table__wrap",
+  area: "tc-table__area",
+  highlight: "tc-table__highlight",
+  merged: "tc-table__merged",
 };
 
 /**
@@ -21,9 +22,15 @@ export class Table {
     this._numberOfColumns = 0;
     this._numberOfRows = 0;
     this._element = this._createTableWrapper();
-    this._table = this._element.querySelector('table');
+    this._table = this._element.querySelector("table");
     this._selectedCell = null;
     this._attachEvents();
+    this.lastSelectedCell = null;
+    this.minRowIndex = null;
+    this.rowSpan = null;
+    this.minColIndex = null;
+    this.colSpan = null;
+    this.minColToStart = null;
   }
 
   /**
@@ -58,7 +65,7 @@ export class Table {
   get selectedRow() {
     if (!this.selectedCell) return null;
 
-    return this.selectedCell.closest('tr');
+    return this.selectedCell.closest("tr");
   }
 
   /**
@@ -113,7 +120,7 @@ export class Table {
 
       this._fillCell(cell);
     }
-  };
+  }
 
   /**
    * Remove column that includes currently selected cell
@@ -131,7 +138,7 @@ export class Table {
     for (let i = 0; i < rows.length; i++) {
       rows[i].deleteCell(removalIndex);
     }
-  };
+  }
 
   /**
    * Insert a row into table relatively to a current cell
@@ -151,7 +158,7 @@ export class Table {
 
     this._fillRow(row);
     return row;
-  };
+  }
 
   /**
    * Remove row in table on index place
@@ -164,7 +171,186 @@ export class Table {
 
     this._table.deleteRow(removalIndex);
     this._numberOfRows--;
-  };
+  }
+
+  /**
+   * unmerge selected cells
+   */
+  unmergeCells() {
+    const rowspan = parseInt(this._selectedCell.getAttribute("rowspan"));
+    const colspan = parseInt(this._selectedCell.getAttribute("colspan"));
+
+    if (!colspan || !rowspan) {
+      alert("Невозможно разделить ячейку");
+      return;
+    }
+
+    const rows = this._table.rows;
+    const startRow = this._selectedCell.parentElement;
+    const startRowIndex = startRow.rowIndex;
+    const startCol = this._selectedCell;
+    const startColIndex = startCol.cellIndex;
+
+    for (let i = startRowIndex; i <= startRowIndex + rowspan - 1; i++) {
+      if (startColIndex + colspan + 1 <= this._numberOfColumns) {
+        for (let j = startColIndex; j <= startColIndex + colspan; j++) {
+          if ([...rows[i].cells[j].classList].includes(CSS.merged)) {
+            rows[i].cells[j].classList.remove(CSS.merged);
+            rows[i].cells[j].removeAttribute("colspan");
+            rows[i].cells[j].removeAttribute("rowspan");
+          }
+          rows[i].cells[j].style.display = "table-cell";
+        }
+      } else {
+        for (let j = startColIndex + colspan - 1; j >= startColIndex; j--) {
+          if ([...rows[i].cells[j].classList].includes(CSS.merged)) {
+            rows[i].cells[j].classList.remove(CSS.merged);
+            rows[i].cells[j].removeAttribute("colspan");
+            rows[i].cells[j].removeAttribute("rowspan");
+          }
+          rows[i].cells[j].style.display = "table-cell";
+        }
+      }
+    }
+  }
+
+  /**
+   * Merge selected cells
+   */
+  mergeCells() {
+    if (
+      this.minRowIndex === null ||
+      this.rowSpan === null ||
+      this.minColIndex === null ||
+      this.colSpan === null ||
+      this.minColToStart === null
+    ) {
+      console.warn("not selected");
+      return;
+    }
+
+    if (!this._checkPermissionForMerge()) {
+      return;
+    }
+
+    if (!this._checkIfMergeIsPossible()) {
+      alert("Невозможно объединить уже объединённые ячейки");
+      return;
+    }
+
+    this._mergeCells(
+      this.minRowIndex,
+      this.rowSpan,
+      this.minColIndex,
+      this.colSpan,
+      this.minColToStart
+    );
+  }
+
+  _checkPermissionForMerge() {
+    const rows = this._table.rows;
+    let permission = true;
+    let stop = false;
+
+    for (
+      let i = this.minRowIndex;
+      i <= this.minRowIndex + this.rowSpan && !stop;
+      i++
+    ) {
+      for (
+        let j = this.minColIndex;
+        j <= this.minColIndex + this.colSpan;
+        j++
+      ) {
+        if (rows[i].cells[j].textContent !== "") {
+          permission = confirm(
+            "Внимание! В объединяемых ячейках присутствуют данные. При слиянии эти данные могут потеряны. Продолжить?"
+          );
+          stop = true;
+          break;
+        }
+      }
+    }
+
+    return permission;
+  }
+
+  _checkIfMergeIsPossible() {
+    const rows = this._table.rows;
+    let possible = true;
+
+    for (let i = this.minRowIndex; i <= this.minRowIndex + this.rowSpan; i++) {
+      for (
+        let j = this.minColIndex;
+        j <= this.minColIndex + this.colSpan;
+        j++
+      ) {
+        if ([...rows[i].cells[j].classList].includes(CSS.merged)) {
+          possible = false;
+        }
+      }
+    }
+
+    return possible;
+  }
+
+  _mergeCells(minRow, rowSpan, minCol, colSpan, minColToStart) {
+    const rows = this._table.rows;
+
+    minColToStart.setAttribute("rowspan", rowSpan + 1);
+    minColToStart.setAttribute("colspan", colSpan + 1);
+    minColToStart.classList.add(CSS.merged);
+
+    // Перебираем ячейки между startCell и endCell
+    for (let i = minRow; i <= minRow + rowSpan; i++) {
+      if (minCol + colSpan + 1 <= this._numberOfColumns) {
+        for (let j = minCol; j <= minCol + colSpan; j++) {
+          if (![...rows[i].cells[j].classList].includes(CSS.merged)) {
+            rows[i].cells[j].style.display = "none";
+          }
+        }
+      } else {
+        for (let j = minCol + colSpan; j >= minCol; j--) {
+          if (![...rows[i].cells[j].classList].includes(CSS.merged)) {
+            rows[i].cells[j].style.display = "none";
+          }
+        }
+      }
+    }
+  }
+
+  // Функция для выделения ячеек
+  selectCells(startCell, endCell) {
+    const rows = this._table.rows;
+    const startRow = startCell.parentElement;
+    const startRowIndex = startRow.rowIndex;
+    const startCol = startCell;
+    const startColIndex = startCol.cellIndex;
+    const endRow = endCell.parentElement;
+    const endRowIndex = endRow.rowIndex;
+    const endCol = endCell;
+    const endColIndex = endCol.cellIndex;
+
+    this.minRowIndex = Math.min(startRowIndex, endRowIndex);
+    this.minColIndex = Math.min(startColIndex, endColIndex);
+    this.rowSpan = Math.abs(startRowIndex - endRowIndex);
+    this.colSpan = Math.abs(startColIndex - endColIndex);
+
+    const minRowToStart = this._table.querySelectorAll("tr")[this.minRowIndex];
+    this.minColToStart = minRowToStart.querySelectorAll("td")[this.minColIndex];
+
+    for (let i = this.minRowIndex; i <= this.minRowIndex + this.rowSpan; i++) {
+      for (
+        let j = this.minColIndex;
+        j <= this.minColIndex + this.colSpan;
+        j++
+      ) {
+        rows[i].cells[j].classList.add(CSS.highlight);
+      }
+    }
+
+    // this._mergeCells(this.minRowIndex, this.rowSpan, this.minColIndex, this.colSpan, this.minColToStart);
+  }
 
   /**
    * get html table wrapper
@@ -189,8 +375,8 @@ export class Table {
    * @return {HTMLElement} tbody - where rows will be
    */
   _createTableWrapper() {
-    return create('div', [ CSS.wrapper ], null, [
-      create('table', [ CSS.table ])  
+    return create("div", [CSS.wrapper], null, [
+      create("table", [CSS.table]),
       // This function can be updated so that it will render the table with the give config instead of 3x3
     ]);
   }
@@ -202,7 +388,7 @@ export class Table {
    * @return {HTMLElement} - the area
    */
   _createContenteditableArea() {
-    return create('div', [ CSS.inputField ], { contenteditable: 'true' });
+    return create("div", [CSS.inputField], { contenteditable: "true" });
   }
 
   /**
@@ -214,7 +400,7 @@ export class Table {
   _fillCell(cell) {
     cell.classList.add(CSS.cell);
     const content = this._createContenteditableArea();
-    cell.appendChild(create('div', [ CSS.area ], null, [ content ]));
+    cell.appendChild(create("div", [CSS.area], null, [content]));
   }
 
   /**
@@ -231,25 +417,59 @@ export class Table {
     }
   }
 
+  _resetMergeFields() {
+    this.minRowIndex = null;
+    this.rowSpan = null;
+    this.minColIndex = null;
+    this.colSpan = null;
+  }
+
   /**
    * @private
    *
    * hang necessary events
    */
   _attachEvents() {
-    this._table.addEventListener('focus', (event) => {
-      this._focusEditField(event);
-    }, true);
+    this._table.addEventListener(
+      "focus",
+      (event) => {
+        const rows = this._table.rows;
+        for (let i = 0; i < this._numberOfRows; i++) {
+          for (let j = 0; j < this._numberOfColumns; j++) {
+            rows[i].cells[j].classList.remove(CSS.highlight);
+          }
+        }
+        this._resetMergeFields();
+        this._focusEditField(event);
+      },
+      true
+    );
 
-    this._table.addEventListener('keydown', (event) => {
+    this._table.addEventListener("keydown", (event) => {
       this._pressedEnterInEditField(event);
     });
 
-    this._table.addEventListener('click', (event) => {
+    this._table.addEventListener("click", (event) => {
+      const clickedCell = event.target.closest("td");
+      const clickedInnerConnent = [...event.target.classList].includes(
+        CSS.inputField
+      ); // небольшой костыль. Был сделан т.к внутри td еще разметка, которая добавляет отступы и если кликать по этому отсупу то не будет происходить выбор индексов ячейки, но при этом будет появляться подсветка
+      if (clickedCell && clickedInnerConnent) {
+        if (event.shiftKey && this.lastSelectedCell) {
+          // Если зажата клавиша Shift, выделяем все ячейки между текущей и предыдущей выбранной ячейкой
+          this.selectCells(this.lastSelectedCell, clickedCell);
+        } else {
+          // Если Shift не зажат, просто выделяем одну ячейку
+          // clickedCell.classList.toggle('selected');
+        }
+
+        // Обновляем информацию о последней выбранной ячейке
+        this.lastSelectedCell = clickedCell;
+      }
       this._clickedOnCell(event);
     });
 
-    this.htmlElement.addEventListener('keydown', (event) => {
+    this.htmlElement.addEventListener("keydown", (event) => {
       this._containerKeydown(event);
     });
   }
@@ -261,9 +481,8 @@ export class Table {
    * @param {FocusEvent} event
    */
   _focusEditField(event) {
-    this.selectedCell = event.target.tagName === 'TD'
-      ? event.target
-      : event.target.closest('td');
+    this.selectedCell =
+      event.target.tagName === "TD" ? event.target : event.target.closest("td");
   }
   focusCellOnSelectedCell() {
     this.selectedCell.childNodes[0].childNodes[0].focus();
@@ -278,7 +497,7 @@ export class Table {
     if (!event.target.classList.contains(CSS.inputField)) {
       return;
     }
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
     }
   }
@@ -293,7 +512,7 @@ export class Table {
     if (!event.target.classList.contains(CSS.cell)) {
       return;
     }
-    const content = event.target.querySelector('.' + CSS.inputField);
+    const content = event.target.querySelector("." + CSS.inputField);
 
     content.focus();
   }
@@ -305,8 +524,14 @@ export class Table {
    * @param {KeyboardEvent} event
    */
   _containerKeydown(event) {
-    if (event.key === 'Enter' && event.ctrlKey) {
+    if (event.key === "Enter" && event.ctrlKey) {
       this._containerEnterPressed(event);
+    }
+    if (event.ctrlKey && event.altKey && event.shiftKey && event.key === "J") {
+      this.mergeCells();
+    }
+    if (event.ctrlKey && event.altKey && event.shiftKey && event.key === "K") {
+      this.unmergeCells();
     }
   }
 

@@ -6,6 +6,8 @@ const insertRowBefore = require("./img/insertRowBeforeIcon.svg");
 const insertRowAfter = require("./img/insertRowAfter.svg");
 const deleteRow = require("./img/deleteRowIcon.svg");
 const deleteCol = require("./img/deleteColIcon.svg");
+const mergeCells = require("./img/mergeCells.svg");
+const unmergeCells = require("./img/unmergeCells.svg");
 
 const Icons = {
   Toolbox: toolboxIcon,
@@ -15,10 +17,13 @@ const Icons = {
   InsertRowAfter: insertRowAfter,
   DeleteRow: deleteRow,
   DeleteCol: deleteCol,
+  MergeCells: mergeCells,
+  UnmergeCells: unmergeCells,
 };
 
 const CSS = {
   input: "tc-table__inp",
+  merged: "tc-table__merged",
 };
 
 /**
@@ -94,6 +99,16 @@ class Table {
         icon: Icons.DeleteCol,
         label: this.api.i18n.t("Delete column"),
       },
+      {
+        actionName: "MergeCells",
+        icon: Icons.MergeCells,
+        label: this.api.i18n.t("Merge cells"),
+      },
+      {
+        actionName: "UnmergeCells",
+        icon: Icons.UnmergeCells,
+        label: this.api.i18n.t("Unmerge cells"),
+      },
     ];
   }
 
@@ -122,6 +137,12 @@ class Table {
       case "DeleteCol":
         this._tableConstructor.table.deleteColumn();
         break;
+      case "MergeCells":
+        this._tableConstructor.table.mergeCells();
+        break;
+      case "UnmergeCells":
+        this._tableConstructor.table.unmergeCells();
+        break;
     }
   }
 
@@ -148,7 +169,7 @@ class Table {
         this.performAction.bind(this, actionName)
       );
       wrapper.appendChild(button);
-      if(this._tableConstructor.table.selectedCell) {
+      if (this._tableConstructor.table.selectedCell) {
         this._tableConstructor.table.focusCellOnSelectedCell();
       }
     });
@@ -163,10 +184,10 @@ class Table {
   render() {
     this.wrapper = document.createElement("div");
 
-    if ((this.data && this.data.content)) {
+    if (this.data && this.data.content) {
       //Creates table if Data is Present
       this._createTableConfiguration();
-    } else  {
+    } else {
       // Create table preview if New table is initialised
       this.wrapper.classList.add("table-selector");
       this.wrapper.setAttribute("data-hoveredClass", "m,n");
@@ -201,7 +222,7 @@ class Table {
     }
     return this.wrapper;
   }
-  
+
   createCells(rows) {
     if (rows !== 0) {
       for (let i = 0; i < rows; i++) {
@@ -224,9 +245,9 @@ class Table {
         this.wrapper.appendChild(rowDiv);
       }
     }
-    const hiddenEl = document.createElement('input');
-    hiddenEl.classList.add('hidden-element');
-    hiddenEl.setAttribute('tabindex', 0);
+    const hiddenEl = document.createElement("input");
+    hiddenEl.classList.add("hidden-element");
+    hiddenEl.setAttribute("tabindex", 0);
     this.wrapper.appendChild(hiddenEl);
   }
 
@@ -248,23 +269,48 @@ class Table {
     const table = toolsContent.querySelector("table");
     const data = [];
     const rows = table ? table.rows : 0;
-    if(rows.length) {
+    if (rows.length) {
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         const cols = Array.from(row.cells);
         const inputs = cols.map((cell) => cell.querySelector("." + CSS.input));
-        const isWorthless = inputs.every(this._isEmpty);
+        // const isWorthless = inputs.every(this._isEmpty);
 
-        if (isWorthless) {
-          continue;
-        }
-        data.push(inputs.map((input) => input.innerHTML));
+        // if (isWorthless) {
+        //   continue;
+        // }
+        data.push(
+          inputs.map((input) => {
+            const closestTd = input.closest("td");
+            const colspan = closestTd.getAttribute("colspan")
+              ? closestTd.getAttribute("colspan")
+              : "";
+            const rowspan = closestTd.getAttribute("rowspan")
+              ? closestTd.getAttribute("rowspan")
+              : "";
+            const style = window.getComputedStyle(closestTd);
+            const classNameMerged = [...closestTd.classList].includes(
+              CSS.merged
+            )
+              ? CSS.merged
+              : "";
+
+            return {
+              innerHTML: input.innerHTML,
+              colspan: colspan,
+              rowspan: rowspan,
+              display: style.display,
+              className: classNameMerged,
+            };
+          })
+        );
+        // data.push(inputs.map((input) => input.innerHTML))
+      }
+      return {
+        content: data,
+      };
     }
-    return {
-      content: data,
-    };
-  }  
-}
+  }
 
   /**
    * @private
@@ -279,31 +325,31 @@ class Table {
 
   static get pasteConfig() {
     return {
-      tags: ['TABLE', 'TR', 'TD', 'TBODY', 'TH'],
+      tags: ["TABLE", "TR", "TD", "TBODY", "TH"],
     };
   }
 
   async onPaste(event) {
     const table = event.detail.data;
-    this.data  = this.pasteHandler(table);
+    this.data = this.pasteHandler(table);
     this._createTableConfiguration();
   }
-  
+
   pasteHandler(element) {
-    const {tagName: tag} = element;
+    const { tagName: tag } = element;
     const data = {
       content: [],
       config: {
         rows: 0,
-        cols: 0
-      }
-    }
-    if(tag ==='TABLE') {
+        cols: 0,
+      },
+    };
+    if (tag === "TABLE") {
       let tableBody = Array.from(element.childNodes);
-      tableBody = tableBody.find(el => el.nodeName === 'TBODY');
+      tableBody = tableBody.find((el) => el.nodeName === "TBODY");
       let tableRows = Array.from(tableBody.childNodes);
-      tableRows = [tableRows].map(obj => {
-        return obj.filter((tr) => tr.nodeName === 'TR');
+      tableRows = [tableRows].map((obj) => {
+        return obj.filter((tr) => tr.nodeName === "TR");
       });
       data.config.rows = tableRows[0].length;
       data.content = tableRows[0].map((tr) => {
@@ -313,11 +359,10 @@ class Table {
           return td.innerHTML;
         });
         return tableData;
-      })
+      });
     }
     return data;
   }
-
 }
 
 module.exports = Table;

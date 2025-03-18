@@ -6,7 +6,8 @@ const CSS = {
   editor: 'tc-editor',
   toolBarHor: 'tc-toolbar--hor',
   toolBarVer: 'tc-toolbar--ver',
-  inputField: 'tc-table__inp'
+  inputField: 'tc-table__inp',
+  merged: 'tc-table__merged',
 };
 
 /**
@@ -61,8 +62,22 @@ export class TableConstructor {
         for (let j = 0; j < size.cols && j < data.content[i].length; j++) {
           // get current cell and her editable part
           const input = this._table.body.rows[i].cells[j].querySelector('.' + CSS.inputField);
+          const closestTd = input.closest("td");
 
-          input.innerHTML = data.content[i][j];
+          if(data.content[i][j].colspan !== "") {
+            closestTd.setAttribute("colspan", data.content[i][j].colspan);
+          }
+          if(data.content[i][j].rowspan !== "") {
+            closestTd.setAttribute("rowspan", data.content[i][j].rowspan);
+          }
+          if(data.content[i][j].className !== "") {
+            closestTd.classList.add(data.content[i][j].className);
+          }
+          if(data.content[i][j].display === "none") {
+            closestTd.style.display = data.content[i][j].display;
+          }
+
+          input.innerHTML = data.content[i][j].innerHTML;
         }
       }
     }
